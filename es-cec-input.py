@@ -25,6 +25,7 @@
 import subprocess
 import uinput
 import sys
+import re
 
 
 # map ES supported keys to python-uinput keys
@@ -77,9 +78,35 @@ def get_keymap():
 
     return keymap
 
+# create a dictionary of the buttons we need
+# mapped to the physical key list.
+# we then use this dictionary when the remote is pressed
+# to generate the correct keypress
+def generate_es_key_dict(keylist):
+    
+    es_key_dict = {}
+    # A Button
+    es_key_dict[('select', 'red')] = keylist[0]
+    # B Button
+    es_key_dict[('exit', 'green')] = keylist[1]
+    # Start
+    es_key_dict['Fast forward', 'blue'] = keylist[2]
+    # Select
+    es_key_dict[('rewind', 'yellow')] = keylist[3]
+    # Left on DPAD
+    es_key_dict[('left',)] = keylist[4]
+    # Right on DPAD 
+    es_key_dict[('right',)] = keylist[5]
+    # Up on DPAD 
+    es_key_dict[('up',)] = keylist[6]
+    # Down on DPAD 
+    es_key_dict[('down',)] = keylist[7] 
+    
+    return es_key_dict
+
 # list of keys we actually need
 # this will be stored in memory and will comprise of
-# a,b,x,y,start,select,l,r,left,right,up,down,l2,r2,l3,r3
+# a,b,x,y,start,select,left,right,up,down
 # keyboard corresponding values the user has chosen
 # in the retroarch.cfg file
 def generate_keylist():
@@ -104,68 +131,45 @@ def generate_keylist():
     return keylist
 
 # read key mappings from retroarch.cfg file
+# uses a regex to pull out the correct input values
 def get_key_bindings(ra_cfg):
 
     keys = []
-    with open(ra_cfg,'r') as fp:
-        for line in fp:
-            if 'input_player1_' in line and '#' not in line:
-                keys.append(line.split('=')[1][2:-2])
+    
+    #The below regex will only pull out the values that we care about - a,b,start,select,up,down,left,and right
+    pattern = re.compile('^input_player1_([ab]|start|select|up|down|left|right).*$', re.MULTILINE)
+    buffer = open(ra_cfg).read()
+    
+    for match in pattern.finditer(buffer):
+        value = match.group(0)
+        keys.append(match.group(0).split('=')[1][2:-1])
+
     return keys
+
+
+
 
 def register_device(keylist):
 
     return uinput.Device(keylist)
 
-def press_keys(line,device,keylist):
-    # ES keys            a,b,x,y,start,select,l,r,left,right,up,down,l2,r2,l3,r3
-    # keylist offset     0,1,2,3,4    ,5,    ,6,7,8,  ,9    ,10,11, ,12,13,14,15 
-    
-    # we only need a,b,start,select,up,down,left,and right
+def press_keys(line,device,key_dict):
     
     # check for key released as pressed was displaying duplicate
     # presses on the remote control used for development
 
     if "released" in line: 
         
-        # Select
-        if "rewind" in line or "yellow" in line:
-            device.emit_click(keylist[5])
-        
-        # Start
-        elif "Fast forward" in line or "blue" in line:
-            device.emit_click(keylist[4])
-        
-        # Left on DPAD
-        elif "left" in line:
-            device.emit_click(keylist[8])
-        
-        # Right on DPAD 
-        elif "right" in line:
-            device.emit_click(keylist[9])
-        
-        # Up on DPAD 
-        elif "up" in line:
-            device.emit_click(keylist[10])
-        
-        # Down on DPAD 
-        elif "down" in line:
-            device.emit_click(keylist[11])
-        
-        # A Button
-        elif "select" in line or "red" in line:
-            device.emit_click(keylist[0])
-        
-        # B button
-        elif "exit" in line or "green" in line:
-            device.emit_click(keylist[1])
-        
-        #display remote output
-        #print line
+        for es_tuple_key in key_dict.iterkeys():
+            if any(es_key in line for es_key in es_tuple_key):
+                device.emit_click(key_dict[es_tuple_key])
+                break
+
 
 def main():
 
     keylist = generate_keylist()
+    es_key_dict = generate_es_key_dict(keylist)
     device = register_device(keylist)
     
     #use cec-client to track pressed buttons on remote
@@ -181,7 +185,7 @@ def main():
         
         if running_processes.find('kodi.bin') == -1 and running_processes.find('retroarch') == -1:
 
-            press_keys(lines.next(), device, keylist)
+            press_keys(lines.next(), device, es_key_dict)
         else:
             # prevent lines from building up in buffer when not in ES
             # as the commands would be applied when control returns to ES
