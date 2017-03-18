@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# Thanks to http://blog.scphillips.com/posts/2013/07/getting-a-python-script-to-run-in-the-background-as-a-service-on-boot/ for script
+
 ### BEGIN INIT INFO
 # Provides:          escecinput
 # Required-Start:    $remote_fs $syslog
